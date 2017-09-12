@@ -10,10 +10,10 @@
 	var L;
 	if (typeof define === 'function' && define.amd) {
 		// AMD
-		define(['leaflet'], factory);
+		define(['../../lib/leaflet-src'], factory);
 	} else if (typeof module === 'object' && typeof module.exports === 'object') {
 		// Node/CommonJS
-		L = require('leaflet');
+		L = require('../../lib/leaflet-src');
 		module.exports = factory(L);
 	} else {
 		// Browser globals

@@ -1,6 +1,8 @@
-import '../lib/leaflet.label-src'
-import antpath from '../lib/leaflet-ant-path'
-import $ from '../lib/jquery'
+import '../util/leaflet.label'
+import antpath from '../util/leaflet-ant-path'
+import '../util/jscmap.doublecircle'
+import '../util/jscmap.southeastPopup'
+import $ from '../../lib/jquery'
 
 L.Map.include({
     addTraceToMap: function (data, options) {
@@ -28,16 +30,14 @@ L.Map.include({
                     callback: function () {
                         if (map.traceLines.rmId) {
                             map.deleteTrace(map.traceLines.rmId);
-                            map.fire('deleteTrace', map.traceLines.rmId);
+                            map.fire('deleteTrace', {
+                                leafletid: map.traceLines.rmId
+                            });
                         }
                     }
                 }],
                 contextmenuInheritItems: false
             };
-
-            map.on('click', function () {
-                map._highlightTrace();
-            });
         }
         var lastLatlng;
         var m_latlngs = {};
@@ -47,19 +47,10 @@ L.Map.include({
             if (ele.lat && ele.lng) {
                 var latlng = L.latLng([ele.lat, ele.lng]);
                 if (m_latlngs[ele.lat + ';' + ele.lng]) {
-                    m_latlngs[ele.lat + ';' + ele.lng].count++;
-                    m_latlngs[ele.lat + ';' + ele.lng].text = {
-                        time: ele.time,
-                        source: ele.source,
-                        content: ele.content,
-                    };
+                    m_latlngs[ele.lat + ';' + ele.lng].nodes.push(ele);
                 } else {
-                    latlng.count = 1;
-                    latlng.text = {
-                        time: ele.time,
-                        source: ele.source,
-                        content: ele.content,
-                    };
+                    latlng.nodes = [];
+                    latlng.nodes.push(ele);
                     m_latlngs[ele.lat + ';' + ele.lng] = latlng;
                 }
                 if (lastLatlng) {
@@ -88,7 +79,9 @@ L.Map.include({
             paused: false
         }).on('click', function (e) {
             map._highlightTrace(this);
-            map.fire('selectTrace', this._leaflet_id);
+            map.fire('selectTrace', {
+                leafletid: this.leafletid
+            });
             L.DomEvent.stopPropagation(e);
         }).addTo(map.traceLines);
 
@@ -100,33 +93,56 @@ L.Map.include({
             layer.bindContextMenu(map.traceLines.ctxoptions);
         });
 
-        trace.id = trace._leaflet_id;
+        trace.leafletid = trace._leaflet_id;
         trace.origindata = data;
         trace.myoptions = options;
 
         Object.values(m_latlngs).forEach(function (latlng) {
             var op = L.setOptions({}, map.traceMarkers.ctxoptions);
             op.color = options.color;
-            op.count = latlng.count;
-            var marker = L.marker.bsMarker(latlng, op).bindPopup(new L.Popup.StaticPopup().setContent(`
-            <p class='title'>轨迹节点</p>
-            <div style='margin-top:10px'>
-                <span>时间:  ` + latlng.text.time + `</span>
-            </div>
-            <div style='margin-top:10px'>
-                <span>来源:  ` + latlng.text.source + `</span>
-            </div>
-            <div style='margin-top:10px'>
-                <span>轨迹点内容:</span>
-                <div style='margin:10px 0;overflow-wrap: break-word;'>` + latlng.text.content + `
-                </div>
-            </div>
-            `), {}).addTo(map.traceMarkers);
+            op.count = latlng.nodes.length;
+            var html = ``;
+            if (op.count == 1) {
+                for (var attr in latlng.nodes[0].summary) {
+                    html += `<div style='margin:10px 0;overflow-wrap: break-word;'>
+                            ` + attr + `:  ` + latlng.nodes[0].summary[attr] + `
+                        </div>`;
+                }
+            } else {
+                html = `<div style='margin-top:10px'>
+                            <span>共 ` + latlng.nodes.length + ` 条话单</span>
+                            <a class='showNodeDetail' style="text-decoration: underline;cursor: pointer;vertical-align: super;"
+                                info='` + JSON.stringify(latlng.nodes) + `'>查看详情</a>
+                        </div>`;
+            }
 
-            marker.traceid = trace.id;
+            // <div style='margin-top:10px'>
+            //     <span>时间:  ` + latlng.text.time + `</span>
+            // </div>
+
+            // <div style='margin-top:10px'>
+            //     <span>轨迹点内容:</span>
+            //     <div style='margin:10px 0;overflow-wrap: break-word;'>` + latlng.text.content + `
+            //     </div>
+            // </div>
+            console.info(latlng.nodes);
+            var marker = L.marker.doubleCircle(latlng, op).bindPopup(new L.Popup.southeastPopup().setContent(`
+            <p class='title'>轨迹节点</p>` + html).on('add', function () {
+                $('.showNodeDetail').unbind('click');
+                $('.showNodeDetail').click(function (e) {
+                    console.info($(e.target).attr('info'));
+                    map.fire('selectTraceNode', {
+                        points: $(e.target).attr('info')
+                    });
+                });
+            }), {}).addTo(map.traceMarkers);
+
+            marker.traceid = trace.leafletid;
         });
 
-        return trace.id;
+        map._fitLatlngs(Object.values(m_latlngs));
+
+        return trace.leafletid;
     },
 
     _deleteTraceMarker: function (marker) {
@@ -135,7 +151,7 @@ L.Map.include({
         var lastLatlng;
         var t_latlngs = [];
         map.traceLines.eachLayer(function (trace) {
-            if (trace.id == marker.traceid) {
+            if (trace.leafletid == marker.traceid) {
                 var newdata = [];
                 for (var i = 0; i < trace.origindata.length; i++) {
                     var ele = trace.origindata[i];
@@ -153,7 +169,7 @@ L.Map.include({
                                 } else {
                                     polyline = [lastLatlng, latlng];
                                 }
-                                if(polyline)t_latlngs = t_latlngs.concat(polyline.slice(0, polyline.length - 1));
+                                if (polyline) t_latlngs = t_latlngs.concat(polyline.slice(0, polyline.length - 1));
                             }
                             lastLatlng = latlng;
                         }
@@ -170,7 +186,9 @@ L.Map.include({
                     dashArray: [0, 20]
                 }).on('click', function (e) {
                     map._highlightTrace(this);
-                    map.fire('selectTrace', this._leaflet_id);
+                    map.fire('selectTrace', {
+                        leafletid: this._leaflet_id
+                    });
                     L.DomEvent.stopPropagation(e);
                 }).addTo(map.traceLines);
 
@@ -182,21 +200,21 @@ L.Map.include({
                     layer.bindContextMenu(map.traceLines.ctxoptions);
                 });
 
-                newtrace.id = newtrace._leaflet_id;
+                newtrace.leafletid = newtrace._leaflet_id;
                 newtrace.origindata = newdata;
                 newtrace.myoptions = trace.myoptions;
 
                 map.traceMarkers.eachLayer(function (marker) {
-                    if (marker.traceid == trace.id) {
-                        marker.traceid = newtrace.id;
+                    if (marker.traceid == trace.leafletid) {
+                        marker.traceid = newtrace.leafletid;
                     }
                 });
 
                 map.fire('deleteTraceNode', {
-                    oldTraceid: trace.id,
+                    oldTraceid: trace.leafletid,
                     newTrace: {
-                        id: newtrace.id,
-                        data: newtrace.origindata
+                        leafletid: newtrace.leafletid,
+                        points: newtrace.origindata
                     }
                 });
                 return;
@@ -214,22 +232,32 @@ L.Map.include({
             trace.setStyle({
                 opacity: 0.8
             });
+            var latlngs = [];
+            this.traceMarkers.eachLayer(function (m) {
+                if (m.traceid == trace.leafletid) {
+                    latlngs.push(m.getLatLng());
+                }
+            });
+            this._fitLatlngs(latlngs);
         }
     },
 
     selectTrace: function (id) {
         var map = this;
-        map.traceLines.eachLayer(function (trace) {
-            if (trace.id == id) {
-                map._highlightTrace(trace);
+        var trace;
+        map.traceLines.eachLayer(function (tr) {
+            if (tr.leafletid == id) {
+                trace = tr;
+                return;
             }
         });
+        map._highlightTrace(trace);
     },
 
     deleteTrace: function (id) {
         var map = this;
         map.traceLines.eachLayer(function (trace) {
-            if (trace.id == id) {
+            if (trace.leafletid == id) {
                 map.traceLines.removeLayer(trace);
                 return;
             }
@@ -249,8 +277,16 @@ L.Map.include({
         map.traceMarkers.eachLayer(function (marker) {
             map.traceMarkers.removeLayer(marker);
         });
-    }
+    },
 
+    _fitLatlngs: function (latlngs) {
+        if (!latlngs || latlngs.length == 0) return;
+        if (latlngs.length == 1) {
+            this.panTo(latlngs[0]);
+        } else {
+            this.fitBounds(latlngs);
+        }
+    }
 });
 
 //二次贝塞尔曲线
@@ -392,69 +428,3 @@ L.LineUtil.smoothLine = function (originPoints) {
     points.push([originPoints[inputPoints.length - 1].lat, originPoints[inputPoints.length - 1].lng]);
     return points;
 }
-
-/*基站点 */
-L.Icon.BsIcon = L.DivIcon.extend({
-    options: {
-        className: '',
-        iconSize: [20, 20],
-        color: 'red',
-        count: 1,
-        html: ``
-    },
-    initialize: function (options) {
-        L.setOptions(this, options);
-        this.options.iconAnchor = [(this.options.iconSize[0] / 2) + 2, (this.options.iconSize[1] / 2) + 2]; //因为边框2px,所以设置偏移2px
-        this.options.popupAnchor = [-10, 0];
-        var html = '';
-        var circleclass = 'circle-';
-        if (this.options.count > 1) {
-            circleclass = 'dblcircle-';
-        }
-
-        if (options.color) {
-            this.createCssStyles([options.color]);
-        }
-
-        this.options.className = this.options.className + ' dblcircle ' + circleclass + this.options.color.replace('#', 'rgb');
-        L.DivIcon.prototype.initialize.call(this, this.options);
-    },
-
-    createCssStyles: function (colors) {
-        for (var i = 0; i < colors.length; i++) {
-            var css = [
-                '.circle-' + colors[i].replace('#', 'rgb') + ' {border: 2px solid ' + colors[i] + ';}',
-                '.dblcircle-' + colors[i].replace('#', 'rgb') + ' {border: 2px solid ' + colors[i] + ';}',
-                '.dblcircle-' + colors[i].replace('#', 'rgb') + ':after{border: 2px solid ' + colors[i] + ';}',
-            ].join('');
-            appendCss(css, colors[i].replace('#', 'rgb'));
-        }
-
-        function appendCss(css, id) {
-            var el = document.createElement('style');
-            if (el.styleSheet) {
-                el.styleSheet.cssText = css;
-            } else {
-                el.id = id;
-                el.appendChild(document.createTextNode(css));
-            }
-
-            document.getElementsByTagName('head')[0].appendChild(el);
-        }
-    }
-});
-
-L.icon.bsIcon = function (options) {
-    return new L.Icon.BsIcon(options);
-};
-
-L.Marker.BsMarker = L.Marker.extend({
-    initialize: function (latlng, options) {
-        options.icon = L.icon.bsIcon(options);
-        L.Marker.prototype.initialize.call(this, latlng, options);
-    }
-});
-
-L.marker.bsMarker = function (latlng, options) {
-    return new L.Marker.BsMarker(latlng, options);
-};

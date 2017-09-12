@@ -12453,7 +12453,7 @@
         // @section
         // @aka Control.Zoom options
         options: {
-            position: 'topleft',
+            position: 'topright',
 
             // @option zoomInText: String = '+'
             // The text set on the 'zoom in' button.
