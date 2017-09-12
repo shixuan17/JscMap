@@ -1,0 +1,18 @@
+html,
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  margin: 0px;
+}
+
+#mapContainer {
+  height: 100%;
+  top: 0;
+  bottom: 0px;
+  left: 0px;
+  position: absolute;
+  width: 100%;
+}
+
