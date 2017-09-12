@@ -1,6 +1,6 @@
-# my-webpack
+# JscMap
 
-> webpack构建多页面应用
+> 基于Leaflet扩展应用
 
 ## Build Setup
 

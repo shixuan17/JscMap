@@ -1,8 +1,8 @@
 {
-  "name": "my-webpack",
-  "description": "A Vue.js project",
+  "name": "JscMap",
+  "description": "Leaflet plugins",
   "version": "1.0.0",
-  "author": "lfy55 <sqk_55@163.com>",
+  "author": "shixuan17 <741656131@qq.com>",
   "private": true,
   "scripts": {
     "dev": "cross-env NODE_ENV=development webpack-dev-server --hot",
